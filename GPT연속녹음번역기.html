@@ -1,0 +1,1106 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>GPT 연속 녹음 번역기 (시스템 소리 자막 지원)</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', 'Apple SD Gothic Neo', sans-serif;
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      min-height: 100vh; display: flex; align-items: center; justify-content: center;
+      padding: 20px;
+    }
+    .container {
+      background: white; border-radius: 20px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+      padding: 32px; width: 100%; max-width: 1000px;
+    }
+    h2 { text-align: center; color: #4a4a8a; margin-bottom: 18px; }
+
+    /* API Key 영역 */
+    .api-row {
+      display: flex; gap: 8px; margin-bottom: 14px;
+      background: #f5f6ff; padding: 10px; border-radius: 10px;
+      align-items: center;
+    }
+    .api-row input {
+      flex: 1; padding: 9px 12px; border: 2px solid #ddd;
+      border-radius: 8px; outline: none; font-size: 0.92rem;
+    }
+    .api-row input:focus { border-color: #667eea; }
+    .api-row button {
+      padding: 9px 16px; border: none; border-radius: 8px;
+      background: #667eea; color: white; cursor: pointer; font-weight: bold;
+    }
+    .api-status { font-size: 0.85rem; color: #666; }
+    .api-status.ok { color: #2e7d32; }
+
+    /* 언어 선택 */
+    .lang-row { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+    select {
+      flex: 1; padding: 11px 14px; border: 2px solid #ddd;
+      border-radius: 10px; outline: none; font-size: 1rem; background: white;
+    }
+    .swap-btn {
+      background: none; border: none; cursor: pointer; font-size: 1.5rem;
+      transition: transform 0.3s; color: #667eea;
+    }
+    .swap-btn:hover { transform: rotate(180deg); }
+
+    /* 옵션 */
+    .options-row {
+      display: flex; gap: 18px; margin-bottom: 12px; flex-wrap: wrap;
+      font-size: 0.92rem; color: #555; align-items: center;
+    }
+    .options-row label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+    .options-row select.small {
+      flex: none; width: auto; padding: 4px 8px; font-size: 0.88rem;
+      border-radius: 6px; border: 1px solid #ccc;
+    }
+
+    /* 도구 버튼 */
+    .toolbar { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+    .tool-btn {
+      padding: 10px 16px; border: none; border-radius: 20px;
+      cursor: pointer; font-weight: bold; font-size: 0.95rem;
+      transition: all 0.2s;
+    }
+    .tool-btn:hover { transform: translateY(-1px); }
+    .tool-btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+    .btn-mic { background: #fce4ec; color: #c62828; border: 2px solid transparent; }
+    .btn-mic.recording {
+      background: #c62828; color: white; border-color: #880e4f;
+      animation: pulse 1s infinite;
+    }
+    .btn-sys { background: #e8f5e9; color: #1b5e20; border: 2px solid transparent; }
+    .btn-sys.capturing {
+      background: #2e7d32; color: white; border-color: #1b5e20;
+      animation: pulse 1s infinite;
+    }
+    .btn-play { background: #e3f2fd; color: #1565c0; }
+    .btn-clear { background: #f5f5f5; color: #555; }
+    @keyframes pulse {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.04); }
+      100% { transform: scale(1); }
+    }
+
+    /* 텍스트 영역 */
+    .text-row { display: flex; gap: 16px; flex-wrap: wrap; }
+    .text-box { flex: 1; min-width: 280px; display: flex; flex-direction: column; gap: 8px; }
+    .text-box-label {
+      font-size: 0.88rem; font-weight: 600; color: #555;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    textarea {
+      width: 100%; height: 240px; padding: 14px;
+      border: 2px solid #ddd; border-radius: 12px;
+      font-size: 1rem; line-height: 1.6; outline: none;
+      font-family: inherit; resize: vertical;
+    }
+    textarea:focus { border-color: #667eea; }
+    .text-actions { display: flex; gap: 6px; }
+    .text-actions button {
+      flex: 1; padding: 8px; border: none; border-radius: 8px;
+      background: #f5f5f5; cursor: pointer; font-size: 0.85rem;
+      transition: background 0.2s;
+    }
+    .text-actions button:hover { background: #e8e8f0; }
+    .text-actions button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* TTS 속도 */
+    .tts-rate { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; color: #666; }
+    .tts-rate input { width: 80px; }
+
+    /* 메인 액션 */
+    .btn-row {
+      display: flex; justify-content: center; gap: 10px;
+      margin-top: 20px; flex-wrap: wrap;
+    }
+    .translate-btn {
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      color: white; border: none; padding: 14px 40px;
+      border-radius: 30px; font-size: 1.05rem; font-weight: bold;
+      cursor: pointer; transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .translate-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(102,126,234,0.4); }
+    .save-btn {
+      background: #43a047; color: white; border: none;
+      padding: 14px 30px; border-radius: 30px; font-size: 1.05rem;
+      font-weight: bold; cursor: pointer; transition: transform 0.2s;
+    }
+    .save-btn:hover { transform: translateY(-2px); }
+
+    /* 상태바 */
+    .status-bar {
+      text-align: center; margin-top: 14px;
+      font-weight: 500; min-height: 24px;
+    }
+
+    /* 녹음 시간 */
+    .rec-timer {
+      display: inline-block; margin-left: 8px;
+      font-family: monospace; color: #c62828; font-weight: bold;
+    }
+    .btn-sys .rec-timer { color: #fff59d; }
+
+    /* 안내 박스 */
+    .hint-box {
+      background: #fffde7; border: 1px solid #fff59d; border-radius: 8px;
+      padding: 8px 12px; font-size: 0.82rem; color: #795548;
+      margin-bottom: 12px; line-height: 1.5;
+    }
+
+    /* 모바일 대응 */
+    @media (max-width: 600px) {
+      .container { padding: 20px; }
+      textarea { height: 180px; }
+      .translate-btn, .save-btn { padding: 12px 24px; font-size: 1rem; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <h2>🌐 GPT 연속 녹음 번역기</h2>
+
+  <!-- API Key 입력 -->
+  <div class="api-row">
+    <input type="password" id="apiKey" placeholder="OpenAI API Key (sk-...) 입력 후 저장" autocomplete="off"/>
+    <button onclick="saveApiKey()">💾 저장</button>
+    <span id="apiStatus" class="api-status">키 미설정</span>
+  </div>
+
+  <!-- 언어 선택 -->
+  <div class="lang-row">
+    <select id="sourceLang">
+      <option value="ko">🇰🇷 한국어</option>
+      <option value="en">🇺🇸 영어</option>
+      <option value="ja">🇯🇵 일본어</option>
+    </select>
+    <button class="swap-btn" onclick="swapLangs()" title="언어 교체">⇄</button>
+    <select id="targetLang">
+      <option value="en" selected>🇺🇸 영어</option>
+      <option value="ko">🇰🇷 한국어</option>
+      <option value="ja">🇯🇵 일본어</option>
+    </select>
+  </div>
+
+  <!-- 옵션 -->
+  <div class="options-row">
+    <label><input type="checkbox" id="autoTranslate" checked/> 녹음 종료 시 자동 번역</label>
+    <label><input type="checkbox" id="autoSpeak"/> 번역 후 자동 음성 재생</label>
+    <label><input type="checkbox" id="liveTranslate" checked/> 시스템 자막 실시간 번역</label>
+    <label>자막 간격:
+      <select id="segInterval" class="small">
+        <option value="6">6초</option>
+        <option value="10" selected>10초</option>
+        <option value="15">15초</option>
+        <option value="20">20초</option>
+      </select>
+    </label>
+    <div class="tts-rate">
+      재생 속도: <input type="range" id="ttsRate" min="0.5" max="1.5" step="0.1" value="1.0"/>
+      <span id="ttsRateVal">1.0x</span>
+    </div>
+  </div>
+
+  <!-- 시스템 소리 캡처 안내 -->
+  <div class="hint-box">
+    💡 <b>시스템 소리 자막+녹음</b>: 방송(예: 영어 뉴스)이 재생 중인 상태에서 버튼을 누르고,
+    공유 창에서 <b>"전체 화면" + "시스템 오디오 공유"</b> 체크 (또는 해당 <b>탭 + "탭 오디오 공유"</b>)를 선택하세요.
+    소리가 일정 간격으로 자막(원문)에 기록되고 동시에 녹음됩니다. 영어 방송이면 원본 언어를 <b>영어</b>로 설정하세요.
+    (자막 생성에 OpenAI Whisper API 사용 → API 키 필요)
+  </div>
+
+  <!-- 도구 버튼 -->
+  <div class="toolbar">
+    <button class="tool-btn btn-mic" id="micBtn" onclick="toggleMic()">
+      🎤 <span id="micLabel">연속 녹음 시작</span>
+      <span id="recTimer" class="rec-timer"></span>
+    </button>
+    <button class="tool-btn btn-sys" id="sysBtn" onclick="toggleSystemCapture()">
+      🖥️🔊 <span id="sysLabel">시스템 소리 자막+녹음</span>
+      <span id="sysTimer" class="rec-timer"></span>
+    </button>
+    <button class="tool-btn btn-play" id="playRecBtn" onclick="playRecording()" disabled>
+      ▶️ 마이크 녹음 재생
+    </button>
+    <button class="tool-btn btn-play" id="playSysBtn" onclick="playSystemRecording()" disabled>
+      ▶️ 시스템 녹음 재생
+    </button>
+    <button class="tool-btn btn-clear" onclick="clearAll()">🗑 전체 지우기</button>
+  </div>
+
+  <!-- 텍스트 영역 -->
+  <div class="text-row">
+    <div class="text-box">
+      <div class="text-box-label">
+        <span>📝 원문 (음성 인식 / 시스템 자막)</span>
+        <span id="srcCount" style="color:#888;">0자</span>
+      </div>
+      <textarea id="inputText" placeholder="마이크 버튼을 누르고 말씀하거나, 시스템 소리 버튼으로 방송 자막을 기록하세요. 직접 입력도 가능합니다."></textarea>
+      <div class="text-actions">
+        <button onclick="speakText('input')" id="speakInputBtn">🔊 원문 듣기</button>
+        <button onclick="stopSpeaking()">⏸ 정지</button>
+        <button onclick="copyText('inputText')">📋 복사</button>
+      </div>
+    </div>
+    <div class="text-box">
+      <div class="text-box-label">
+        <span>✨ 번역 결과</span>
+        <span id="tgtCount" style="color:#888;">0자</span>
+      </div>
+      <textarea id="output" placeholder="번역 결과가 여기에 표시됩니다."></textarea>
+      <div class="text-actions">
+        <button onclick="speakText('output')" id="speakOutputBtn">🔊 번역 듣기</button>
+        <button onclick="stopSpeaking()">⏸ 정지</button>
+        <button onclick="copyText('output')">📋 복사</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="statusMsg" class="status-bar"></div>
+
+  <!-- 메인 액션 -->
+  <div class="btn-row">
+    <button class="translate-btn" onclick="doTranslate()">🔄 GPT 번역하기</button>
+    <button class="save-btn" onclick="saveToFile()">💾 파일로 저장</button>
+  </div>
+</div>
+
+<script>
+/* =========================================================
+   상태 변수
+========================================================= */
+let isRecording = false;
+let recognition = null;
+let finalTranscript = '';
+
+let mediaRecorder = null;
+let audioChunks = [];
+let audioBlob = null;
+let audioUrl = null;
+let audioPlayer = null;
+
+let recTimerInterval = null;
+let recStartTime = 0;
+
+/* 시스템 소리 캡처 상태 */
+let sysActive = false;
+let sysStream = null;          // getDisplayMedia 원본 스트림
+let sysAudioStream = null;     // 오디오 트랙만 추린 스트림
+let sysFullRecorder = null;    // 전체 연속 녹음용
+let sysFullChunks = [];
+let sysBlob = null;
+let sysUrl = null;
+let sysPlayer = null;
+let sysSegRecorder = null;     // 자막용 구간 녹음
+let sysSegTimer = null;
+let sysTimerInterval = null;
+let sysStartTime = 0;
+let subQueue = Promise.resolve();  // 자막 순서 보장 큐
+
+/* =========================================================
+   환경 점검 - 보안 컨텍스트(https/localhost) 및 브라우저 지원 확인
+   (file://로 직접 열면 마이크/화면공유 API가 차단되어 아무 반응이 없음)
+========================================================= */
+function checkEnvironment() {
+  const isSecure = window.isSecureContext === true;
+  const hasMediaDevices = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+  const hasSpeechRecognition = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+  const problems = [];
+
+  if (!isSecure || !hasMediaDevices) {
+    problems.push(
+      '⚠️ 마이크/화면공유 기능을 쓸 수 없는 환경입니다.\n' +
+      '이 파일을 그냥 더블클릭해서 열면(file://) 브라우저 보안 정책상 마이크·화면공유 API가 차단됩니다.\n' +
+      '해결 방법: 아래 중 하나로 "서버를 통해" 열어주세요.\n' +
+      '  1) VS Code의 Live Server 확장으로 열기\n' +
+      '  2) 명령 프롬프트에서 해당 폴더로 이동 후: python -m http.server 8000  실행 → 브라우저에서 http://localhost:8000 접속\n' +
+      '  3) 실제 웹서버(https)에 업로드해서 열기'
+    );
+  }
+  if (!hasSpeechRecognition) {
+    problems.push(
+      '⚠️ 이 브라우저는 음성 인식(Web Speech API)을 지원하지 않습니다.\n' +
+      'Chrome 또는 Edge 브라우저 최신버전을 사용해 주세요. (Safari/Firefox는 미지원)'
+    );
+  }
+
+  if (problems.length > 0) {
+    const banner = document.createElement('div');
+    banner.style.cssText = 'background:#ffebee;border:2px solid #e53935;color:#b71c1c;' +
+      'padding:14px;border-radius:10px;margin-bottom:14px;font-size:0.88rem;' +
+      'white-space:pre-wrap;line-height:1.6;';
+    banner.textContent = problems.join('\n\n');
+    document.querySelector('.container').insertBefore(banner, document.querySelector('.api-row'));
+    setStatus('❌ 실행 환경 문제로 일부 기능이 비활성화되었습니다. 위 안내를 확인하세요.', 'error');
+  }
+  return { isSecure, hasMediaDevices, hasSpeechRecognition };
+}
+
+/* =========================================================
+   초기화 - 저장된 API 키 불러오기, 언어 설정 복원
+========================================================= */
+window.addEventListener('DOMContentLoaded', () => {
+  checkEnvironment();
+  const savedKey = localStorage.getItem('openai_api_key');
+  if (savedKey) {
+    document.getElementById('apiKey').value = savedKey;
+    updateApiStatus(true);
+  }
+  // 언어 설정 복원
+  const savedSrc = localStorage.getItem('src_lang');
+  const savedTgt = localStorage.getItem('tgt_lang');
+  if (savedSrc) document.getElementById('sourceLang').value = savedSrc;
+  if (savedTgt) document.getElementById('targetLang').value = savedTgt;
+
+  // 글자 수 카운터
+  document.getElementById('inputText').addEventListener('input', updateCounts);
+  document.getElementById('output').addEventListener('input', updateCounts);
+  // TTS 속도 표시
+  const rate = document.getElementById('ttsRate');
+  const rateVal = document.getElementById('ttsRateVal');
+  rate.addEventListener('input', () => rateVal.textContent = parseFloat(rate.value).toFixed(1) + 'x');
+  // 언어 변경 시 저장
+  document.getElementById('sourceLang').addEventListener('change', e => localStorage.setItem('src_lang', e.target.value));
+  document.getElementById('targetLang').addEventListener('change', e => localStorage.setItem('tgt_lang', e.target.value));
+  updateCounts();
+});
+
+/* =========================================================
+   API Key 관리
+========================================================= */
+function saveApiKey() {
+  const key = document.getElementById('apiKey').value.trim();
+  if (!key) {
+    alert('API 키를 입력해 주세요.');
+    return;
+  }
+  if (!key.startsWith('sk-')) {
+    if (!confirm('OpenAI API 키는 보통 "sk-"로 시작합니다. 그래도 저장하시겠습니까?')) return;
+  }
+  localStorage.setItem('openai_api_key', key);
+  updateApiStatus(true);
+  setStatus('✅ API 키가 저장되었습니다 (브라우저 로컬에만 저장)', 'success');
+}
+
+function getApiKey() {
+  return document.getElementById('apiKey').value.trim() || localStorage.getItem('openai_api_key') || '';
+}
+
+function updateApiStatus(ok) {
+  const el = document.getElementById('apiStatus');
+  if (ok) {
+    el.textContent = '✓ 키 설정됨';
+    el.classList.add('ok');
+  } else {
+    el.textContent = '키 미설정';
+    el.classList.remove('ok');
+  }
+}
+
+/* =========================================================
+   음성 인식 + 동시 녹음 (마이크, MediaRecorder)
+========================================================= */
+async function toggleMic() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    alert('이 브라우저는 음성 인식을 지원하지 않습니다. 크롬을 사용하세요.');
+    return;
+  }
+
+  if (isRecording) {
+    stopRecording();
+    return;
+  }
+
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    setStatus('❌ 마이크 API를 사용할 수 없는 환경입니다. https 또는 localhost로 접속했는지 확인하세요 (file://로 열면 동작하지 않습니다).', 'error');
+    return;
+  }
+
+  // 1) 오디오 녹음 시작 (재생용)
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    audioChunks = [];
+    mediaRecorder = new MediaRecorder(stream);
+    mediaRecorder.ondataavailable = (e) => {
+      if (e.data.size > 0) audioChunks.push(e.data);
+    };
+    mediaRecorder.onstop = () => {
+      // 마이크 트랙 종료
+      stream.getTracks().forEach(t => t.stop());
+      if (audioChunks.length > 0) {
+        audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+        if (audioUrl) URL.revokeObjectURL(audioUrl);
+        audioUrl = URL.createObjectURL(audioBlob);
+        document.getElementById('playRecBtn').disabled = false;
+      }
+    };
+    mediaRecorder.start();
+  } catch (err) {
+    console.error(err);
+    setStatus('❌ 마이크 권한이 필요합니다: ' + err.message, 'error');
+    return;
+  }
+
+  // 2) 음성 인식 시작
+  recognition = new SpeechRecognition();
+  recognition.continuous = true;
+  recognition.interimResults = true;
+  recognition.maxAlternatives = 1;
+  const srcVal = document.getElementById('sourceLang').value;
+  recognition.lang = srcVal === 'ko' ? 'ko-KR' : (srcVal === 'ja' ? 'ja-JP' : 'en-US');
+
+  recognition.onstart = () => {
+    isRecording = true;
+    finalTranscript = document.getElementById('inputText').value;
+    if (finalTranscript && !finalTranscript.endsWith(' ')) finalTranscript += ' ';
+    document.getElementById('micBtn').classList.add('recording');
+    document.getElementById('micLabel').textContent = '중단하기';
+    startRecTimer();
+    setStatus('🎤 녹음 중... 말씀하신 후 중단 버튼을 누르세요', 'loading');
+  };
+
+  recognition.onresult = (event) => {
+    let interim = '';
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      if (event.results[i].isFinal) {
+        finalTranscript += event.results[i][0].transcript + ' ';
+      } else {
+        interim += event.results[i][0].transcript;
+      }
+    }
+    document.getElementById('inputText').value = finalTranscript + interim;
+    updateCounts();
+  };
+
+  recognition.onend = () => {
+    isRecording = false;
+    document.getElementById('micBtn').classList.remove('recording');
+    document.getElementById('micLabel').textContent = '연속 녹음 시작';
+    stopRecTimer();
+    setStatus('✅ 녹음 완료', 'success');
+
+    // 자동 번역 옵션
+    if (document.getElementById('autoTranslate').checked) {
+      const text = document.getElementById('inputText').value.trim();
+      if (text) doTranslate();
+    }
+  };
+
+  recognition.onerror = (e) => {
+    console.error('음성 인식 오류:', e);
+    let msg = e.error;
+    if (e.error === 'not-allowed') msg = '마이크 권한이 거부되었습니다';
+    else if (e.error === 'no-speech') msg = '음성이 감지되지 않았습니다';
+    else if (e.error === 'network') msg = '네트워크 오류 (인터넷 연결 확인)';
+    setStatus('❌ ' + msg, 'error');
+    isRecording = false;
+    document.getElementById('micBtn').classList.remove('recording');
+    document.getElementById('micLabel').textContent = '연속 녹음 시작';
+    stopRecTimer();
+  };
+
+  recognition.start();
+}
+
+function stopRecording() {
+  if (recognition) {
+    try { recognition.stop(); } catch(e) {}
+  }
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    try { mediaRecorder.stop(); } catch(e) {}
+  }
+}
+
+/* 녹음 타이머 (마이크) */
+function startRecTimer() {
+  recStartTime = Date.now();
+  document.getElementById('recTimer').textContent = '00:00';
+  recTimerInterval = setInterval(() => {
+    document.getElementById('recTimer').textContent = fmtElapsed(recStartTime);
+  }, 1000);
+}
+function stopRecTimer() {
+  if (recTimerInterval) clearInterval(recTimerInterval);
+  recTimerInterval = null;
+  setTimeout(() => { document.getElementById('recTimer').textContent = ''; }, 2000);
+}
+
+function fmtElapsed(startMs) {
+  const sec = Math.floor((Date.now() - startMs) / 1000);
+  const mm = String(Math.floor(sec / 60)).padStart(2, '0');
+  const ss = String(sec % 60).padStart(2, '0');
+  return `${mm}:${ss}`;
+}
+
+/* =========================================================
+   ★ 시스템 소리(내장 출력장치) 자막 + 동시 녹음
+   - getDisplayMedia로 시스템/탭 오디오 캡처
+   - 전체 녹음(MediaRecorder 연속) + 구간 녹음(N초 주기)
+   - 각 구간을 OpenAI Whisper API로 전사 → 자막으로 기록
+   - 옵션에 따라 각 자막을 실시간 GPT 번역
+========================================================= */
+async function toggleSystemCapture() {
+  if (sysActive) {
+    stopSystemCapture();
+    return;
+  }
+
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    setStatus('❌ 자막 생성(Whisper)에 OpenAI API 키가 필요합니다. 키를 먼저 저장하세요.', 'error');
+    document.getElementById('apiKey').focus();
+    return;
+  }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+    alert('이 브라우저는 화면/오디오 공유를 지원하지 않습니다. 크롬 또는 엣지를 사용하세요.');
+    return;
+  }
+
+  // 1) 시스템/탭 오디오 캡처 (video는 필수 요건이라 함께 요청 후 사용 안 함)
+  try {
+    sysStream = await navigator.mediaDevices.getDisplayMedia({
+      video: true,
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+    });
+  } catch (err) {
+    console.error(err);
+    setStatus('❌ 화면/소리 공유가 취소되었습니다', 'error');
+    return;
+  }
+
+  const audioTracks = sysStream.getAudioTracks();
+  if (audioTracks.length === 0) {
+    sysStream.getTracks().forEach(t => t.stop());
+    sysStream = null;
+    setStatus('❌ 오디오가 공유되지 않았습니다. 공유 창에서 "시스템 오디오 공유" 또는 "탭 오디오 공유"를 반드시 체크하세요.', 'error');
+    return;
+  }
+
+  // 오디오 트랙만 추린 스트림
+  sysAudioStream = new MediaStream(audioTracks);
+
+  // 2) 전체 연속 녹음 시작
+  sysFullChunks = [];
+  try {
+    sysFullRecorder = new MediaRecorder(sysAudioStream, { mimeType: 'audio/webm' });
+  } catch (e) {
+    sysFullRecorder = new MediaRecorder(sysAudioStream);
+  }
+  sysFullRecorder.ondataavailable = (e) => {
+    if (e.data.size > 0) sysFullChunks.push(e.data);
+  };
+  sysFullRecorder.onstop = () => {
+    if (sysFullChunks.length > 0) {
+      sysBlob = new Blob(sysFullChunks, { type: 'audio/webm' });
+      if (sysUrl) URL.revokeObjectURL(sysUrl);
+      sysUrl = URL.createObjectURL(sysBlob);
+      document.getElementById('playSysBtn').disabled = false;
+    }
+  };
+  sysFullRecorder.start(1000);
+
+  // 3) 사용자가 브라우저 UI에서 공유 중지하면 함께 종료
+  sysStream.getTracks().forEach(t => t.addEventListener('ended', () => {
+    if (sysActive) stopSystemCapture();
+  }));
+
+  // 4) UI 갱신 + 자막용 구간 녹음 루프 시작
+  sysActive = true;
+  document.getElementById('sysBtn').classList.add('capturing');
+  document.getElementById('sysLabel').textContent = '자막+녹음 중단';
+  sysStartTime = Date.now();
+  document.getElementById('sysTimer').textContent = '00:00';
+  sysTimerInterval = setInterval(() => {
+    document.getElementById('sysTimer').textContent = fmtElapsed(sysStartTime);
+  }, 1000);
+  setStatus('🖥️🔊 시스템 소리 자막 기록 + 녹음 중... (중단하려면 버튼을 다시 누르세요)', 'loading');
+
+  startSegmentLoop(apiKey);
+}
+
+/* 자막용 구간 녹음 루프: N초마다 독립 webm 조각을 만들어 Whisper로 전사 */
+function startSegmentLoop(apiKey) {
+  const intervalMs = parseInt(document.getElementById('segInterval').value, 10) * 1000;
+
+  const cycle = () => {
+    if (!sysActive || !sysAudioStream) return;
+    let rec;
+    try {
+      rec = new MediaRecorder(sysAudioStream, { mimeType: 'audio/webm' });
+    } catch (e) {
+      rec = new MediaRecorder(sysAudioStream);
+    }
+    const chunks = [];
+    const segStartMs = Date.now() - sysStartTime;
+    rec.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+    rec.onstop = () => {
+      if (chunks.length === 0) return;
+      const blob = new Blob(chunks, { type: 'audio/webm' });
+      // 너무 작은(무음) 조각은 건너뜀
+      if (blob.size < 2000) return;
+      enqueueTranscription(blob, segStartMs, apiKey);
+    };
+    rec.start();
+    sysSegRecorder = rec;
+    sysSegTimer = setTimeout(() => {
+      try { if (rec.state !== 'inactive') rec.stop(); } catch (e) {}
+      cycle(); // 다음 구간 즉시 시작
+    }, intervalMs);
+  };
+  cycle();
+}
+
+/* 자막 순서 보장을 위한 순차 큐 */
+function enqueueTranscription(blob, segStartMs, apiKey) {
+  subQueue = subQueue.then(() => transcribeSegment(blob, segStartMs, apiKey)).catch(e => {
+    console.error('자막 처리 오류:', e);
+  });
+}
+
+/* Whisper API로 구간 전사 → 자막 기록 (+옵션 시 실시간 번역) */
+async function transcribeSegment(blob, segStartMs, apiKey) {
+  const fd = new FormData();
+  fd.append('file', blob, 'segment.webm');
+  fd.append('model', 'whisper-1');
+  const srcLang = document.getElementById('sourceLang').value;
+  fd.append('language', srcLang);
+
+  let text = '';
+  try {
+    const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${apiKey}` },
+      body: fd
+    });
+    if (!res.ok) {
+      let msg = `HTTP ${res.status}`;
+      try {
+        const err = await res.json();
+        if (err.error && err.error.message) msg = err.error.message;
+      } catch (e) {}
+      if (res.status === 401) msg = 'API 키가 유효하지 않습니다';
+      else if (res.status === 429) msg = '사용량 초과 또는 결제 정보 미설정';
+      setStatus('❌ 자막 오류: ' + msg, 'error');
+      return;
+    }
+    const data = await res.json();
+    text = (data.text || '').trim();
+  } catch (e) {
+    console.error('Whisper 오류:', e);
+    setStatus('❌ 자막 전송 오류: ' + e.message, 'error');
+    return;
+  }
+
+  if (!text) return; // 무음 구간
+
+  // 자막 기록: [mm:ss] 텍스트
+  const ts = fmtMs(segStartMs);
+  appendToBox('inputText', `[${ts}] ${text}`);
+  if (sysActive) setStatus('🖥️🔊 자막 기록 중... (' + ts + ')', 'loading');
+
+  // 실시간 번역 옵션
+  if (document.getElementById('liveTranslate').checked) {
+    await translateSegment(text, ts, apiKey);
+  }
+}
+
+/* 자막 구간 실시간 번역 → 번역 결과 창에 누적 */
+async function translateSegment(text, ts, apiKey) {
+  const source = document.getElementById('sourceLang').value;
+  const target = document.getElementById('targetLang').value;
+  if (source === target) return;
+  const langName = { ko: 'Korean', en: 'English', ja: 'Japanese' };
+
+  try {
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        temperature: 0.3,
+        messages: [
+          {
+            role: 'system',
+            content: `You are a professional translator. Translate the user's text from ${langName[source]} to ${langName[target]}. This is a fragment of a live broadcast transcript. Preserve the meaning and natural flow. Output ONLY the translated text.`
+          },
+          { role: 'user', content: text }
+        ]
+      })
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    const translated = data.choices?.[0]?.message?.content?.trim();
+    if (translated) appendToBox('output', `[${ts}] ${translated}`);
+  } catch (e) {
+    console.error('구간 번역 오류:', e);
+  }
+}
+
+/* 시스템 캡처 중단 */
+function stopSystemCapture() {
+  sysActive = false;
+  if (sysSegTimer) { clearTimeout(sysSegTimer); sysSegTimer = null; }
+  if (sysSegRecorder && sysSegRecorder.state !== 'inactive') {
+    try { sysSegRecorder.stop(); } catch (e) {}
+  }
+  sysSegRecorder = null;
+  if (sysFullRecorder && sysFullRecorder.state !== 'inactive') {
+    try { sysFullRecorder.stop(); } catch (e) {}
+  }
+  if (sysStream) {
+    sysStream.getTracks().forEach(t => t.stop());
+    sysStream = null;
+  }
+  sysAudioStream = null;
+  if (sysTimerInterval) { clearInterval(sysTimerInterval); sysTimerInterval = null; }
+  setTimeout(() => { document.getElementById('sysTimer').textContent = ''; }, 2000);
+  document.getElementById('sysBtn').classList.remove('capturing');
+  document.getElementById('sysLabel').textContent = '시스템 소리 자막+녹음';
+  setStatus('✅ 시스템 소리 자막+녹음 완료 (마지막 자막은 몇 초 뒤 표시될 수 있습니다)', 'success');
+}
+
+/* 시스템 녹음 재생 */
+function playSystemRecording() {
+  if (!sysUrl) {
+    setStatus('재생할 시스템 녹음이 없습니다', 'error');
+    return;
+  }
+  if (sysPlayer) { sysPlayer.pause(); sysPlayer = null; }
+  sysPlayer = new Audio(sysUrl);
+  sysPlayer.play();
+  setStatus('▶️ 시스템 녹음 재생 중', 'loading');
+  sysPlayer.onended = () => setStatus('✅ 재생 완료', 'success');
+}
+
+/* 텍스트 상자에 줄 단위 추가 + 자동 스크롤 */
+function appendToBox(id, line) {
+  const el = document.getElementById(id);
+  el.value += (el.value && !el.value.endsWith('\n') ? '\n' : '') + line + '\n';
+  el.scrollTop = el.scrollHeight;
+  updateCounts();
+}
+
+function fmtMs(ms) {
+  const sec = Math.floor(ms / 1000);
+  const mm = String(Math.floor(sec / 60)).padStart(2, '0');
+  const ss = String(sec % 60).padStart(2, '0');
+  return `${mm}:${ss}`;
+}
+
+/* =========================================================
+   마이크 녹음 재생
+========================================================= */
+function playRecording() {
+  if (!audioUrl) {
+    setStatus('재생할 녹음이 없습니다', 'error');
+    return;
+  }
+  if (audioPlayer) {
+    audioPlayer.pause();
+    audioPlayer = null;
+  }
+  audioPlayer = new Audio(audioUrl);
+  audioPlayer.play();
+  setStatus('▶️ 녹음 재생 중', 'loading');
+  audioPlayer.onended = () => setStatus('✅ 재생 완료', 'success');
+}
+
+/* =========================================================
+   GPT 번역
+========================================================= */
+async function doTranslate() {
+  const text = document.getElementById('inputText').value.trim();
+  const source = document.getElementById('sourceLang').value;
+  const target = document.getElementById('targetLang').value;
+  const apiKey = getApiKey();
+
+  if (!text) {
+    setStatus('번역할 텍스트가 없습니다', 'error');
+    return;
+  }
+  if (!apiKey) {
+    setStatus('❌ OpenAI API 키를 먼저 입력하고 저장해 주세요', 'error');
+    document.getElementById('apiKey').focus();
+    return;
+  }
+  if (source === target) {
+    setStatus('원본 언어와 번역 언어가 같습니다', 'error');
+    return;
+  }
+
+  setStatus('🔄 GPT 번역 중...', 'loading');
+  const langName = { ko: 'Korean', en: 'English', ja: 'Japanese' };
+
+  try {
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        temperature: 0.3,
+        messages: [
+          {
+            role: 'system',
+            content: `You are a professional translator. Translate the user's text from ${langName[source]} to ${langName[target]}. Preserve the meaning, tone, and natural flow. Keep any [mm:ss] timestamps at the start of lines unchanged. Output ONLY the translated text without any explanation, quotation marks, or extra commentary.`
+          },
+          { role: 'user', content: text }
+        ]
+      })
+    });
+
+    if (!res.ok) {
+      let errorMsg = `HTTP ${res.status}`;
+      try {
+        const errData = await res.json();
+        if (errData.error && errData.error.message) {
+          errorMsg = errData.error.message;
+        }
+      } catch (e) {}
+      // 자주 발생하는 오류 친절하게 안내
+      if (res.status === 401) errorMsg = 'API 키가 유효하지 않습니다. 키를 다시 확인해 주세요.';
+      else if (res.status === 429) errorMsg = '사용량 초과 또는 결제 정보 미설정 (OpenAI 계정 확인 필요)';
+      else if (res.status === 403) errorMsg = '접근 권한이 없습니다. 결제/지역 설정을 확인해 주세요.';
+      throw new Error(errorMsg);
+    }
+
+    const data = await res.json();
+    const translated = data.choices?.[0]?.message?.content?.trim();
+    if (!translated) throw new Error('빈 응답을 받았습니다');
+
+    document.getElementById('output').value = translated;
+    updateCounts();
+    setStatus('✅ 번역 완료', 'success');
+
+    // 자동 음성 재생 옵션
+    if (document.getElementById('autoSpeak').checked) {
+      setTimeout(() => speakText('output'), 300);
+    }
+  } catch (e) {
+    console.error('번역 오류:', e);
+    setStatus('❌ 번역 오류: ' + e.message, 'error');
+  }
+}
+
+/* =========================================================
+   TTS (음성 합성)
+========================================================= */
+function speakText(which) {
+  if (!('speechSynthesis' in window)) {
+    setStatus('이 브라우저는 음성 합성을 지원하지 않습니다', 'error');
+    return;
+  }
+  // 기존 재생 중지
+  window.speechSynthesis.cancel();
+
+  const text = document.getElementById(which === 'input' ? 'inputText' : 'output').value.trim();
+  if (!text) {
+    setStatus('재생할 텍스트가 없습니다', 'error');
+    return;
+  }
+  const lang = document.getElementById(which === 'input' ? 'sourceLang' : 'targetLang').value;
+  const langCode = lang === 'ko' ? 'ko-KR' : (lang === 'ja' ? 'ja-JP' : 'en-US');
+
+  const utter = new SpeechSynthesisUtterance(text);
+  utter.lang = langCode;
+  utter.rate = parseFloat(document.getElementById('ttsRate').value);
+  utter.pitch = 1.0;
+
+  // 가능하면 해당 언어 음성 선택
+  const voices = window.speechSynthesis.getVoices();
+  const match = voices.find(v => v.lang === langCode) || voices.find(v => v.lang.startsWith(lang));
+  if (match) utter.voice = match;
+
+  utter.onstart = () => setStatus(`🔊 ${which === 'input' ? '원문' : '번역'} 재생 중...`, 'loading');
+  utter.onend = () => setStatus('✅ 재생 완료', 'success');
+  utter.onerror = (e) => setStatus('❌ 음성 재생 오류: ' + e.error, 'error');
+
+  window.speechSynthesis.speak(utter);
+}
+
+function stopSpeaking() {
+  window.speechSynthesis.cancel();
+  if (audioPlayer) audioPlayer.pause();
+  if (sysPlayer) sysPlayer.pause();
+  setStatus('⏸ 재생 정지', 'success');
+}
+
+/* =========================================================
+   유틸리티
+========================================================= */
+function swapLangs() {
+  const s = document.getElementById('sourceLang');
+  const t = document.getElementById('targetLang');
+  const tmp = s.value; s.value = t.value; t.value = tmp;
+  localStorage.setItem('src_lang', s.value);
+  localStorage.setItem('tgt_lang', t.value);
+  // 텍스트도 같이 교체
+  const inEl = document.getElementById('inputText');
+  const outEl = document.getElementById('output');
+  const tmpText = inEl.value; inEl.value = outEl.value; outEl.value = tmpText;
+  updateCounts();
+}
+
+function clearAll() {
+  if (!confirm('원문과 번역문을 모두 지우시겠습니까?')) return;
+  document.getElementById('inputText').value = '';
+  document.getElementById('output').value = '';
+  finalTranscript = '';
+  updateCounts();
+  setStatus('🗑 지웠습니다', 'success');
+}
+
+function copyText(id) {
+  const text = document.getElementById(id).value;
+  if (!text) { setStatus('복사할 내용이 없습니다', 'error'); return; }
+  navigator.clipboard.writeText(text).then(() => {
+    setStatus('📋 클립보드에 복사되었습니다', 'success');
+  }).catch(() => setStatus('❌ 복사 실패', 'error'));
+}
+
+function updateCounts() {
+  const inputLen = document.getElementById('inputText').value.length;
+  const outputLen = document.getElementById('output').value.length;
+  document.getElementById('srcCount').textContent = inputLen + '자';
+  document.getElementById('tgtCount').textContent = outputLen + '자';
+}
+
+function setStatus(m, c) {
+  const e = document.getElementById('statusMsg');
+  e.textContent = m;
+  e.style.color = c === 'error' ? '#c62828' : c === 'success' ? '#2e7d32' : '#667eea';
+}
+
+/* =========================================================
+   파일로 저장
+========================================================= */
+function saveToFile() {
+  const input = document.getElementById('inputText').value.trim();
+  const output = document.getElementById('output').value.trim();
+  const srcLang = document.getElementById('sourceLang').value;
+  const tgtLang = document.getElementById('targetLang').value;
+
+  if (!input && !output) {
+    setStatus('저장할 내용이 없습니다', 'error');
+    return;
+  }
+
+  const langName = { ko: '한국어', en: '영어', ja: '일본어' };
+  const now = new Date();
+  const ts = now.getFullYear() + '-' +
+             String(now.getMonth()+1).padStart(2,'0') + '-' +
+             String(now.getDate()).padStart(2,'0') + '_' +
+             String(now.getHours()).padStart(2,'0') +
+             String(now.getMinutes()).padStart(2,'0');
+
+  // 형식 선택
+  const choice = prompt('저장 형식을 선택하세요:\n1 = 텍스트 파일 (.txt)\n2 = HTML 파일 (.html, 보기 좋음)\n3 = 둘 다', '1');
+  if (!choice) return;
+
+  if (choice === '1' || choice === '3') {
+    const txt =
+`==========================================
+ GPT 번역 기록
+ 저장 시간: ${now.toLocaleString('ko-KR')}
+ ${langName[srcLang]} → ${langName[tgtLang]}
+==========================================
+
+[원문 / 자막]
+${input}
+
+------------------------------------------
+
+[번역]
+${output}
+
+==========================================
+`;
+    downloadFile(`translation_${ts}.txt`, txt, 'text/plain;charset=utf-8');
+  }
+
+  if (choice === '2' || choice === '3') {
+    const html =
+`<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>번역 기록 ${ts}</title>
+<style>
+  body { font-family: 'Segoe UI', 'Apple SD Gothic Neo', sans-serif; max-width: 800px; margin: 40px auto; padding: 20px; background: #f9f9fb; }
+  .card { background: white; border-radius: 12px; padding: 28px; box-shadow: 0 4px 16px rgba(0,0,0,0.06); margin-bottom: 16px; }
+  h1 { color: #4a4a8a; margin-bottom: 8px; }
+  .meta { color: #888; font-size: 0.9rem; margin-bottom: 24px; }
+  h2 { color: #555; font-size: 1.05rem; margin-bottom: 10px; border-left: 4px solid #667eea; padding-left: 10px; }
+  .txt { white-space: pre-wrap; line-height: 1.7; padding: 12px; background: #f5f6ff; border-radius: 8px; }
+  .arrow { text-align: center; font-size: 1.5rem; color: #667eea; margin: 12px 0; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>🌐 번역 기록</h1>
+  <div class="meta">${now.toLocaleString('ko-KR')} · ${langName[srcLang]} → ${langName[tgtLang]}</div>
+  <h2>📝 원문 / 자막 (${langName[srcLang]})</h2>
+  <div class="txt">${escapeHtml(input)}</div>
+  <div class="arrow">↓</div>
+  <h2>✨ 번역 (${langName[tgtLang]})</h2>
+  <div class="txt">${escapeHtml(output)}</div>
+</div>
+</body>
+</html>`;
+    downloadFile(`translation_${ts}.html`, html, 'text/html;charset=utf-8');
+  }
+
+  // 마이크 녹음 파일 다운로드 옵션
+  if (audioBlob && confirm('마이크 녹음 파일(.webm)도 같이 저장하시겠습니까?')) {
+    triggerDownload(audioUrl, `recording_mic_${ts}.webm`);
+  }
+
+  // 시스템 녹음 파일 다운로드 옵션
+  if (sysBlob && confirm('시스템 소리 녹음 파일(.webm)도 같이 저장하시겠습니까?')) {
+    triggerDownload(sysUrl, `recording_system_${ts}.webm`);
+  }
+
+  setStatus('💾 파일이 저장되었습니다', 'success');
+}
+
+function triggerDownload(url, name) {
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+function downloadFile(name, content, type) {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  triggerDownload(url, name);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+}
+
+// 음성 목록 미리 로드 (Chrome 이슈 대응)
+if ('speechSynthesis' in window) {
+  window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
+}
+</script>
+</body>
+</html>
